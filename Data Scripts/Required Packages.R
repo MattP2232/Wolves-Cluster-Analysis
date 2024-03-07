@@ -1,0 +1,23 @@
+suppressMessages({
+  library(DBI)
+  library(dplyr)
+  library(tidyverse)
+  library(ggplot2)
+  library(gridExtra)
+  library(knitr)
+  library(RColorBrewer)
+  library(cluster)  
+  library(factoextra)
+  library(grid)
+  library(png)
+  library(knitr)
+})
+
+suppressWarnings({
+  library(RODBC)
+  library(odbc)
+  library(gghighlight)
+  library(DT)
+  library(huxtable)
+  library(kableExtra)
+})
