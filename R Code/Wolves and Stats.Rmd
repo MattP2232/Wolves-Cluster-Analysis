@@ -1,0 +1,566 @@
+---
+title: "A Cluster Analysis of the Minnesota Timberwolves"
+author:
+- Matt Parker
+- parke898@umn.edu
+output:
+  prettydoc::html_pretty:
+    theme: leonids
+---
+<style>
+pre code {
+  color: #222;
+}
+
+body {
+  font-size: 13pt;
+}
+</style>
+
+<div style="text-align:center;">
+  <img src="C:\Users\mattp\Documents\Timberwolves Project\Wolves Image.webp" width="600px">
+  </div>
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, fig.width = 10, fig.height = 6)
+```
+
+# Executive Summary
+
+Have you ever wondered how a great player from a rival organization would fit on your favorite basketball team? Perhaps you've considered how players from past eras could step into roles on current iterations of your team. To address these questions, I’ve developed a tool utilizing statistical analysis and visualization that groups NBA players together by player archetype. This tool enables us to spotlight players with specific skill sets that may be perfect acquisitions for your favorite team.
+
+In my comprehensive analysis, I explore the recent history of the Minnesota Timberwolves, creating several groups of players that showcase the distinct skill sets exhibited by various Wolves stars and role players over the years.
+
+# Introduction
+
+The Minnesota Timberwolves experience has been a rollercoaster ride for fans since the teams inception in 1989. They reached a peak in the 2003-2004 season, winning two playoff series led by MVP winner Kevin Garnett. Since then, the ride has been mostly downhill, with just a couple of playoff appearances to show for it, and no series wins. But losing often shines light on the loyalty of the sports fan, which couldn’t be clearer with Timberwolves fans, who are finally reaping the benefits of a team that currently stands as the number one seed in the Western Conference.
+
+As the Timberwolves embark on what may be their best regular season in franchise history, one can't help but reflect on some of the players who have brought us a mix of joy and frustration, leaning more towards the latter, in some of their most excruciatingly painful seasons. Maybe you’re wondering, as I often do, how former Wolves players might have fit on today's team. Using a statistical classification method called k-means clustering, I’ve done that by grouping similar Wolves players together using various basketball statistics focused on advanced algorithms and player tendencies.
+
+In this project, I’ll explain the use of k-means clustering, the datasets (including how they were collected and manipulated), and finally the visualization of the k-means cluster plots that ended up categorizing my observations into 9 distinct player archetypes. 
+
+In addition to breaking down my analysis, I'll provide footnotes with links to my code to ensure this project is as replicable as possible. I'll start with a link to the required packages for my statistical analysis and visualization.[^1]
+
+
+[^1]: [Required Packages](https://github.com/MattP2232/Wolves-Cluster-Analysis/blob/main/Code%20Scripts/Required%20Packages.R)
+
+```{r}
+suppressMessages({
+library(DBI)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(knitr)
+library(RColorBrewer)
+library(cluster)  
+library(factoextra)
+library(grid)
+library(png)
+library(knitr)
+})
+
+suppressWarnings({
+library(RODBC)
+library(odbc)
+library(gghighlight)
+library(DT)
+library(huxtable)
+library(kableExtra)
+})
+```
+
+```{r, eval = TRUE, echo = FALSE}
+con <- dbConnect(RMySQL::MySQL(), 
+                 dbname = "timberwolves",
+                 host = "localhost",
+                 port = 3306,
+                 user = "root",
+                 password = "Timberwolves1332")
+```
+
+# K-Means Clustering: Calculations and Steps for Clustering the Dataset
+
+K-means clustering is an unsupervised statistical method focused on splitting observations into subgroups, where the observations in each subgroup exhibit similarities to each other based on the values of the predictor variables. Unlike supervised statistical methods used for predictions, unsupervised methods work well for comparisons. The goal of k-means is to create a specific number of clusters so the total within-cluster variation is minimized, creating groups that exhibit very similar qualities.
+
+The algorithm I’ve used to create the clusters, visualized below, is calculated as the sum of squared distances between observations and the mean of observations within each cluster, otherwise known as the centers. 
+
+```{r echo=FALSE, out.width = "30%", fig.align = "center"}
+knitr::include_graphics("~/Timberwolves Project/K-means 1.JPG")
+```
+
+In this case, x<sub>i</sub> is defined as a data point within cluster C<sub>k</sub>, while u<sub>k</sub> is the mean of all data points within C<sub>k</sub>. Ultimately my goal is to minimize the total within-cluster sum of squares algorithm. The calculation above is for one variable (e.g. just assists percentage), and below is the sum of within cluster variation across all variables in my analysis.
+
+```{r echo=FALSE, out.width = "30%", fig.align = "center"}
+knitr::include_graphics("~/Timberwolves Project/K-means 2.JPG")
+```
+	
+I’ve taken several steps to optimize statistical performance and minimize variation within clusters. First off, I chose the optimal number of clusters for this project, defined as k. From there, I randomly selected k observations from the dataset and initialized these points as the cluster centers (or means). I followed by assigning observations to the closest cluster, while updating cluster centers as new observations were assigned. In my analysis, I created 25 initial configurations of the model, a number recommended in k-means clustering to identify the best model.
+
+The goal of clustering in this context is to form distinct groups, each containing players with similar playing styles and performance. In the end, some players may be placed in clusters that won’t necessarily align with your preconceived notion of their performance, since I’ve only considered x number of statistics that have various flaws in their own right. Nevertheless, these k-means clusters have produced engaging visuals, highlighting shared characteristics among various Timberwolves players throughout the years.
+
+
+# The Dataset
+
+My dataset comprises all Minnesota Timberwolves players who have played a minimum of 500 minutes in a season since 2012-2013. I did this to create a relatively large dataset while including only those players who made an impact on the floor (good or bad), and 500 minutes felt like the appropriate cutoff for the task. As a result, the dataset includes 63 individual Timberwolves players over a 12-season span.  Note that the dataset includes 138 individual player-seasons. For example, Karl-Anthony Towns contributed across multiple seasons, while Nikola Peković was featured in only a couple.
+
+The player statistics are collected from Basketball Reference (an online professional basketball statistics database), using basic and advanced stats tables from 2012 up until 2024. I used MySQL to combine datasets, which involved joining basic and advanced statistical tables together and eliminating all variables that wouldn’t be present in analysis outside of player names, seasons, and minutes played. Then I exported the data to R for analysis.
+
+```{r}
+wolves_data <- dbReadTable(con, "wolves_data")
+mm <- dbReadTable(con, "m_morris")
+```
+
+## Variables
+
+I looked for a set of player statistics that would account for style of play as well as player performance. I decided not to include basic counting stats like points, rebounds, assists, etc., opting to use advanced stats that would better compare starters versus role players. The advanced metrics I chose to highlight are quite simply those available to me today from Basketball Reference. In a perfect world I’d spend more time finding or developing even more advanced metrics.
+
+In addition to advanced stats, I decided to include various tendency stats. Tendency stats provide a glimpse into how players can be categorized into specific overarching play styles. For example, Luke Ridnour and Nikola Peković may exhibit similar advanced numbers quantifying performance, but they’re on opposite sides of the spectrum when it comes to their style of play. Additionally, tendency stats aren’t significantly swayed by volume, or in this case minutes played, as players tend to play the same style of basketball no matter how often they see the court.
+
+Below is a list of all variables I used in my cluster analysis, split by tendency stats and advanced stats. All stats and descriptions are provided by Basketball Reference.
+
+### Tendency Statistics
+
+* 3PAr -- 3-Point Attempt Rate: Percentage of FG Attempts from 3-Point Range.
+* FTr -- Free Throw Attempt Rate: Number of FT Attempts Per FG Attempt.
+* ORB% -- Offensive Rebound Percentage: An estimate of the percentage of available offensive rebounds a player grabbed while they were on the floor.
+* DRB% -- Defensive Rebound Percentage: An estimate of the percentage of available defensive rebounds a player grabbed while they were on the floor.
+* AST% -- Assist Percentage: An estimate of the percentage of teammate field goals a player assisted while they were on the floor.
+* STL% -- Steal Percentage: An estimate of the percentage of opponent possessions that end with a steal by the player while they were on the floor.
+* BLK% -- Block Percentage: An estimate of the percentage of opponent two-point field goal attempts blocked by the player while they were on the floor.
+* TOV% -- Turnover Percentage: An estimate of turnovers committed per 100 plays.
+* USG% -- Usage Percentage: An estimate of the percentage of team plays used by a player while they were on the floor.
+
+### Advanced Statistics
+
+* WS/48 -- Win Shares Per 48 Minutes: An estimate of the number of wins contributed by a player per 48 minutes (league average is approximately .100).
+* OBPM -- Offensive Box Plus/Minus: A box score estimate of the offensive points per 100 possessions a player contributed above a league-average player, translated to an average team.
+* DBPM -- Defensive Box Plus/Minus: A box score estimate of the defensive points per 100 possessions a player contributed above a league-average player, translated to an average team.
+* VORP -- Value over Replacement Player: A box score estimate of the points per 100 TEAM possessions that a player contributed above a replacement-level (-2.0) player, translated to an average team and prorated to an 82-game season.
+
+<div style="margin-bottom: 25px;"></div>
+
+## Data Manipulation
+
+Below is the complete set of individual Timberwolves players who have logged at least 500 minutes in a season since 2012.[^2]
+
+[^2]: [Filtering Wolves Dataset](https://github.com/MattP2232/Wolves-Cluster-Analysis/blob/main/Code%20Scripts/Filtering%20the%20Data%20Set.R)
+
+```{r}
+# Filtering for players who player at least 500 minutes
+
+wolves_500 <- subset(wolves_data, MP > 500)
+unique_players <- unique(wolves_500$Player)
+
+suppressWarnings({
+m <- as.data.frame(matrix(unique_players, ncol = 5, byrow = TRUE))
+})
+
+names(m) <- NULL
+m[13, 4] <- ""
+m[13, 5] <- ""
+
+m_html <- kable(m, "html") %>%
+  kable_styling()
+
+m_html
+```
+
+After filtering for players with greater than 500 minutes played, I extracted the predictor variables from the dataset and scaled the variables for appropriate analysis.[^3] “Feature scaling” is required for k-means analysis to normalize the range of variables. In this case, I used the z-score algorithm for a standard normal distribution to conduct scaling.
+
+To further illustrate z scores and standard normal distributions, I’m going to jump ahead to the analysis and take a peek at cluster 1. For all observations in cluster 1, the average scaled AST% value is 2.46. This indicates that this cluster has an AST% that’s 2.46 standard deviations from the mean of zero. Using a z score table,[^4] the average observation in cluster one has an AST% value in the 99th percentile vs. the rest of the dataset.
+
+[^3]: [Extracting Predictor Variables](https://github.com/MattP2232/Wolves-Cluster-Analysis/blob/main/Code%20Scripts/Extracting%20Predictor%20Variables.R)
+
+[^4]: [Z Score Table](https://github.com/MattP2232/Wolves-Cluster-Analysis/blob/main/Wolves-Analysis_files/Z%20scores.webp)
+
+One additional note to keep in mind is on turnover percentage (TO%). Without making any changes to the dataset, a player with a low turnover percentage would have a scaled TO% value below zero. Considering a low turnover percentage is a positive for player performance, I decided to change the TO% values to negative values to flip them across the mean. In doing so, players with low turnover percentages will now have positive scaled values.
+
+```{r}
+# Extracting predictor variables
+
+wolves_data_1 <- wolves_500[, c(4:13, 17:20)]
+wolves_data_1$TOV. <- -wolves_data_1$TOV.
+scaled_wolves <- scale(wolves_data_1)
+```
+
+# K-Means Clustering: Algorithm and How to Find Optimal Number of Clusters
+
+Before I developed the k means algorithm, I had to determine the optimal number of clusters for analysis. I calculated the clustering algorithm at a specific value of k, with k being the number of clusters, to determine the within-cluster variation at each value of k. Then I plotted each within-cluster variation value to determine the optimal number of clusters using the plot.[^5] 
+
+[^5]: [Model and Optimal Number of Clusters](https://github.com/MattP2232/Wolves-Cluster-Analysis/blob/main/Code%20Scripts/Model%20and%20Optimal%20Clusters.R)
+
+Usually, analysts choose the number of clusters where the decrease in within-cluster variation is minimal or where there is a noticeable “elbow” in the plot. Below is the plot for cluster optimization. 9 turned out to be the ideal number of clusters.
+
+```{r}
+# Determining the optimal number of clusters using fviz_nbclust function
+
+oc <- fviz_nbclust(scaled_wolves, kmeans, method = "wss")
+oc
+```
+
+```{r}
+# Running the model
+  
+set.seed(2024)
+
+K <- 9
+kmeans9 <- kmeans(scaled_wolves, centers = K, nstart = 25, iter.max = 20)
+km_centers <- as.data.frame(kmeans9$centers) 
+
+# Name clusters before pivoting
+
+km_centers$Cluster <- c('Cluster 1', 'Cluster 2', 'Cluster 3',
+                       'Cluster 4', 'Cluster 5', 'Cluster 6',
+                       'Cluster 7', 'Cluster 8', 'Cluster 9') 
+
+# Pivot data to make plotting easier
+
+km_centers <- km_centers %>% 
+  rename(c('AST%' = 'AST.', 'DRB%' = 'DRB.', 'ORB%' = 'ORB.', 
+           'BLK%' = 'BLK.', 'STL%' = 'STL.', 'TOV%' = 'TOV.', 
+           'USG%' = 'USG.', 'TS%' = 'TS.', '3PAr' = 'X3PAr', 'WS/48' = 'WS.48')) %>%
+  pivot_longer(!Cluster, names_to = 'predictor', values_to = 'z_value')
+
+# Reset the order of clusters for plotting
+
+km_centers$Cluster <- factor(km_centers$Cluster, 
+                             levels=c('Cluster 1', 'Cluster 2', 'Cluster 3', 
+                                      'Cluster 4', 'Cluster 5', 'Cluster 6', 
+                                      'Cluster 7', 'Cluster 8', 'Cluster 9'))
+```
+
+# Visualizing K-Means Clusters
+
+I created a “For Loop” that visualizes all 9 clusters and its players.[^6] For visual clarity, I put the centers (or means) of each variable in descending order, which highlights the skills of the players present in each cluster. Keep in mind that to make the graphs visually appealing, the variables on the x axis won’t be in the same order across plots.  Additionally, I created an “if” statement within the loop to remove duplicate names if a cluster exceeded 15 player-seasons to avoid overfilling the tables. For a complete list of all player seasons included in the clusters, refer to this table.[^7]
+
+[^6]: [Visualizing K-Means](https://github.com/MattP2232/Wolves-Cluster-Analysis/blob/main/Code%20Scripts/Visualizing%20K-Means.R)
+
+[^7]: [Players and Cluster Assignments](https://github.com/MattP2232/Wolves-Cluster-Analysis/blob/main/Data%20Sets%20for%20Replication/cluster_players.csv)
+
+Below, you'll find visuals of all 9 clusters, each labeled based on what I deemed an appropriate group name considering their cluster centers and the players present (but it’s up for interpretation!).
+
+<div style="margin-bottom: 25px;"></div>
+
+```{r}
+# Create list of player images for each graph
+
+ip <- c("~/Timberwolves Project/Ricky.png", "~/Timberwolves Project/Jaden.png", "~/Timberwolves Project/Pek2.png", "~/Timberwolves Project/Brew.png", "~/Timberwolves Project/Mo.png", "~/Timberwolves Project/AB.png", "~/Timberwolves Project/Ant2.png", "~/Timberwolves Project/KAT.png", "~/Timberwolves Project/Bazz.png")
+
+max_rows <- 9
+gg_list <- list()
+clp_list <- list()
+
+
+# Additional names for clusters, color of centers in each graph, and cluster names
+
+cluster <- c('Cluster 1', 'Cluster 2', 'Cluster 3', 'Cluster 4',
+            'Cluster 5', 'Cluster 6', 'Cluster 7', 'Cluster 8', 
+            'Cluster 9')
+
+cluster_numbers <- c(1:9)
+
+wolves_colors <- c("#253494", "#1A9850", "#4D4D4D", "#66BD63", 
+                   "#225EA8", "#081D58", "black", "#253494", "#1A9850")
+
+wolves_colors_alpha <- adjustcolor(wolves_colors, alpha.f = 0.25)
+
+cluster_names <- c("Ricky Rubio", "3&D", "Classic Bigs", "Ball Movement and Defense", "One-Way Combo Guards", "The Wolves Experience", "All-Around Players", "Superstar Offensive Bigs", "High Volume Scorers")
+
+# For loop for outputs of ggplots and player name tables
+
+for(i in seq_along(cluster)) {
+  char <- cluster[i]
+  num <- cluster_numbers[i]
+  wc <- wolves_colors[i]
+  wc_2 <- wolves_colors_alpha[i]
+  cn <- cluster_names[i]
+  img <- readPNG(ip[i])
+  img_grob <- rasterGrob(img, interpolate = TRUE, width = unit(1.8, "inches"))
+  
+  cluster_loop <- km_centers %>% 
+    filter(Cluster == char) %>%
+    arrange(desc(z_value)) %>%
+    ggplot(aes(x = reorder(predictor, -z_value), y = z_value, color = Cluster)) + 
+    geom_point(color = wc, size = 2) +
+    gghighlight(Cluster == char, use_direct_label = FALSE) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "darkgrey", linewidth = 0.75) +  
+    labs(x = "Player Statistics", y = "Cluster Center", title = cn, subtitle = char) +  
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle=45, size=10),
+          plot.title = element_text(face = "bold")) +
+    scale_y_continuous(breaks = seq(-3, 3, by = 1)) +
+    annotation_custom(img_grob, xmin = Inf, xmax = 10, ymin = Inf, ymax = Inf) +
+    coord_cartesian(ylim = c(-3, 3), clip = "off") 
+  
+  gg_list[[i]] <- cluster_loop
+
+  
+  cluster_loop_players <- data.frame(Cluster = kmeans9$cluster, 
+                                     Name = wolves_500$Player, 
+                                     Season = wolves_500$Year) %>%
+                                          filter(Cluster == num)
+
+  if(nrow(cluster_loop_players) > 15) {
+    sub_players <- distinct(cluster_loop_players, Name, .keep_all = TRUE)
+  }
+  else {
+    sub_players <- cluster_loop_players
+  }
+
+  tab_play <- tableGrob(sub_players[, 2:3], rows = NULL, theme = 
+                          ttheme_default(core = list(bg_params = list(fill = wc_2))))
+  
+  clp_list[[i]] <- tab_play
+}
+```
+
+```{r}
+grid.arrange(gg_list[[1]], clp_list[[1]], layout_matrix = rbind(c(1, 2)))
+```
+
+
+<div style="margin-bottom: 75px;"></div>
+
+```{r, eval = TRUE, echo = FALSE}
+grid.arrange(gg_list[[2]], clp_list[[2]], layout_matrix = rbind(c(1, 2)))
+```
+
+<div style="margin-bottom: 75px;"></div>
+
+```{r, eval = TRUE, echo = FALSE}
+grid.arrange(gg_list[[3]], clp_list[[3]], layout_matrix = rbind(c(1, 2)))
+```
+
+<div style="margin-bottom: 75px;"></div>
+
+```{r, eval = TRUE, echo = FALSE}
+grid.arrange(gg_list[[4]], clp_list[[4]], layout_matrix = rbind(c(1, 2)))
+```
+
+<div style="margin-bottom: 75px;"></div>
+
+```{r, eval = TRUE, echo = FALSE}
+grid.arrange(gg_list[[5]], clp_list[[5]], layout_matrix = rbind(c(1, 2)))
+```
+
+<div style="margin-bottom: 75px;"></div>
+
+```{r, eval = TRUE, echo = FALSE}
+grid.arrange(gg_list[[6]], clp_list[[6]], layout_matrix = rbind(c(1, 2)))
+```
+
+<div style="margin-bottom: 75px;"></div>
+
+```{r, eval = TRUE, echo = FALSE}
+grid.arrange(gg_list[[7]], clp_list[[7]], layout_matrix = rbind(c(1, 2)))
+```
+
+<div style="margin-bottom: 75px;"></div>
+
+```{r, eval = TRUE, echo = FALSE}
+grid.arrange(gg_list[[8]], clp_list[[8]], layout_matrix = rbind(c(1, 2)))
+```
+
+<div style="margin-bottom: 75px;"></div>
+
+```{r, eval = TRUE, echo = FALSE}
+grid.arrange(gg_list[[9]], clp_list[[9]], layout_matrix = rbind(c(1, 2)))
+```
+
+<div style="margin-bottom: 25px;"></div>
+
+# Predicting New Observations: Monte Morris
+
+To test the tool, I decided to examine the career numbers of recently-acquired point guard Monte Morris, with the goal of comparing those numbers to the 9 clusters created in the k-means algorithm. I collected Monte’s career numbers and scaled them relative to the rest of the database. From there, I calculated the sum of square differences between Monte’s numbers and the cluster centers within each cluster. Below is a table containing these sum of square differences between Monte and all nine clusters.[^8]
+
+[^8]: [Morris Data and Cluster Assignment](https://github.com/MattP2232/Wolves-Cluster-Analysis/blob/main/Code%20Scripts/Monte%20Data%20and%20Cluster%20Assingment.R)
+
+```{r}
+# Scale the Monte Morris data frame using the means and standard deviations
+
+mm$TOV. <- -mm$TOV.
+
+means <- colMeans(wolves_data_1)
+
+sds <- apply(wolves_data_1, 2, sd)
+
+scaled_mm <- as.data.frame(scale(mm, center = means, scale = sds))
+
+scaled_mm <- scaled_mm %>% 
+  rename(c('AST%' = 'AST.', 'DRB%' = 'DRB.', 'ORB%' = 'ORB.', 
+           'BLK%' = 'BLK.', 'STL%' = 'STL.', 'TOV%' = 'TOV.', 
+           'USG%' = 'USG.', 'TS%' = 'TS.', '3PAr' = 'X3PAr', 'WS/48' = 'WS.48'))
+
+long_data <- gather(scaled_mm, key = "x", value = "y")
+```
+
+```{r}
+# Assign the new observation to the cluster with the minimum distance
+
+set.seed(2024)
+
+distances <- apply(kmeans9$centers, 1, function(center) sqrt(sum((scaled_mm - center)^2)))
+s <- t(as.matrix(distances))
+as.data.frame(s)
+```
+
+Based on the results above, perhaps surprisingly, Monte would fall under cluster 2, the 3&D group. With that said, I found the other results more eye opening, particularly Monte’s distinct difference from former Wolves point guard Ricky Rubio. Apart from the Ricky cluster, the only other cluster Monte was least similar to was the Defensive Anchor cluster, which is to be expected given the differences in play style between point guards and big men. So why are Ricky and Monte so distinct from each other? Below is a plot of the Ricky Rubio cluster, with Monte Morris' career statistics added for comparison.[^9]
+
+<div style="margin-bottom: 35px;"></div>
+
+[^9]: [Ricky vs. Monte Visual](https://github.com/MattP2232/Wolves-Cluster-Analysis/blob/main/Code%20Scripts/Ricky%20vs%20Monte%20Visual.R)
+
+```{r}
+# Morris and Rubio player photos
+
+img_2 <- readPNG("~/Timberwolves Project/Monte.png")
+img_grob_2 <- rasterGrob(img_2, interpolate = TRUE, width = unit(1.5, "inches"))
+img_3 <- readPNG("~/Timberwolves Project/Ricky.png")
+img_grob_3 <- rasterGrob(img_3, interpolate = TRUE, width = unit(1.55, "inches"))
+```
+
+```{r}
+# Ricky and Monte Player Table
+
+mm2 <- data.frame(Name = "Monte Morris", Season = "Career")
+column_widths <- unit(c(3, 3), "cm")
+
+monte_grob <- tableGrob(mm2, rows = NULL, 
+                      theme = ttheme_default(core = list(bg_params = list(fill = adjustcolor("#253494", alpha.f = 0.25)))), 
+                      widths = column_widths)
+
+
+ricky <- data.frame(Cluster = kmeans9$cluster,
+                    Name = wolves_500$Player, 
+                    Season = wolves_500$Year) %>%
+                        filter(Cluster == 1)
+
+ricky_grob <- tableGrob(ricky[, 2:3], rows = NULL, 
+                      theme = ttheme_default(core = list(bg_params = list(fill = adjustcolor("red", alpha.f = 0.25)))), 
+                      widths = column_widths)
+
+combined_table <- rbind(ricky_grob, monte_grob[2, ], size = "last")
+```
+
+```{r, fig.width=15, fig.height=6}
+# Ricky vs. Monte Visual
+
+suppressWarnings({
+  ricky_monte <- km_centers %>% 
+    filter(Cluster == "Cluster 1") %>%
+    arrange(desc(z_value)) %>%
+    ggplot(aes(x = reorder(predictor, -z_value), y = z_value, color = Cluster)) + 
+    geom_point(color = "red", size = 2) +
+    geom_point(data = long_data, aes(x = x, y = y), color = "#253494", size = 2) +
+    gghighlight(Cluster == "Cluster 1", use_direct_label = FALSE) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "darkgrey", linewidth = 0.75) +  
+    labs(x = "Player Statistics", y = "Cluster Center", 
+       title = "Ricky Rubio vs. Monte Morris", 
+       subtitle = "Cluster 1 Against Scaled Morris Statistics") +  
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle=45, size=10),
+          plot.title = element_text(face = "bold"), plot.margin = ) +
+    scale_y_continuous(breaks = seq(-3, 3, by = 1)) +
+    annotation_custom(img_grob_2, xmin = Inf, xmax = 10, ymin = Inf, ymax = 2) +
+    annotation_custom(img_grob_3, xmin = Inf, xmax = 4, ymin = Inf, ymax = 2.03) +
+    coord_cartesian(ylim = c(-3, 3), clip = "off") 
+})
+
+suppressWarnings({
+  monte <- long_data %>% 
+    ggplot(aes(x = reorder(x, y, decreasing = TRUE), y = y)) + 
+    geom_point(color = "red", size = 2) +
+    geom_point(data = long_data, aes(x = x, y = y), color = "#253494", size = 2) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "darkgrey", linewidth = 0.75) +  
+    labs(x = "Player Statistics", y = "Scaled Morris Values", 
+       title = "Monte Morris Career Statistics", 
+       subtitle = "Scaled Relative to Timberwolves Dataset") +  
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle=45, size=10),
+          plot.title = element_text(face = "bold"), plot.margin = ) +
+    scale_y_continuous(breaks = seq(-3, 3, by = 1)) +
+    annotation_custom(img_grob_2, xmin = Inf, xmax = 10, ymin = Inf, ymax = 2) +
+    coord_cartesian(ylim = c(-3, 3), clip = "off") 
+})
+cluster_grids <- grid.arrange(ricky_monte, combined_table, monte, ncol = 3)
+```
+
+<div style="margin-bottom: 35px;"></div>
+
+What you’ll see are some strong differences between Ricky’s play style and performance and Monte’s. The first four variables, AST%, TOV%, STL%, and FTr are where you’ll see particularly stark differences between the two players. To me, this falls in line with the modern sentiment of positionality and its lack of correlation with play style. Ricky falls in line with the traditional point guard in terms of play style; someone who quarterbacks the offense and hounds perimeter defenders. Monte, on the other hand, plays the role as a connector; someone who takes care of the ball and spaces the floor, which fit particularly well for several years as a complimentary piece to a Nikola Jokic led Nuggets team.
+
+# Conclusion: How You Can Use This Analysis
+
+As an avid Wolves fan, configuring and analyzing a dataset containing much of the Wolves recent history made sense to me as a choice for this project. That said, this analysis and the code I developed is not confined to any specific set of data. With the combination of the k-means clustering algorithm and my code for data visualization, you can collect and analyze all sorts of sports data, with the goal of finding similarities between players, teams, coaches, etc., and grouping them together.
+
+Beyond k-means, my code can also be used for a more simple mode of player comparison. In the Ricky vs. Monte plot, we used Monte’s career stats instead of a cluster to compare to the Ricky Rubio cluster. What if, instead, we just want to compare two players from the 2023-2024 season, say Monte Morris and Mike Conley?[^10] Below is one example of the many ways in which you can use this tool to visualize player comparisons.
+
+[^10]: [Mike Vs. Monte](https://github.com/MattP2232/Wolves-Cluster-Analysis/blob/main/Code%20Scripts/Mike%20v%20Monte%20Visual.R)
+
+<div style="margin-bottom: 35px;"></div>
+
+```{r, echo=FALSE}
+# Mike Conley vs. Monte Morris
+
+mc <- data.frame(Name = "Mike Conley", Season = "2023-2024")
+column_widths <- unit(c(3, 3), "cm")
+
+mike_grob <- tableGrob(mc, rows = NULL, 
+                      theme = ttheme_default(core = list(bg_params = list(fill = adjustcolor("red", alpha.f = 0.25)))), 
+                      widths = column_widths)
+
+mc_mm <- rbind(mike_grob, monte_grob[2, ], size = "last")
+
+img_4 <- readPNG("~/Timberwolves Project/Mike.png")
+img_grob_4 <- rasterGrob(img_4, interpolate = TRUE, width = unit(1.36, "inches"))
+img_grob_5 <- rasterGrob(img_2, interpolate = TRUE, width = unit(1.36, "inches"))
+
+mike <- scaled_wolves[134, ]
+mike <- as.data.frame(t(mike))
+
+mike <- mike %>% 
+  rename(c('AST%' = 'AST.', 'DRB%' = 'DRB.', 'ORB%' = 'ORB.', 
+           'BLK%' = 'BLK.', 'STL%' = 'STL.', 'TOV%' = 'TOV.', 
+           'USG%' = 'USG.', 'TS%' = 'TS.', '3PAr' = 'X3PAr', 'WS/48' = 'WS.48'))
+
+mike_data <- gather(mike, key = "values", value = "stats")
+
+mike_data <- mike_data %>% arrange(desc(stats))
+
+suppressWarnings({
+  monte_mike <- mike_data %>% 
+    ggplot(aes(x = reorder(values, -stats), y = stats)) + 
+    geom_point(color = "red", size = 2) +
+    geom_point(data = long_data, aes(x = x, y = y), color = "#253494", size = 2) +
+    geom_point(data = mike_data, aes(x = values, y = stats), color = "red", size = 2) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "darkgrey", linewidth = 0.75) +  
+    labs(x = "Player Statistics", y = "Scaled Values", 
+       title = "Mike Conley vs. Monte Morris", 
+       subtitle = "Scaled Relative to Timberwolves Data Set") +  
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle=45, size=10),
+          plot.title = element_text(face = "bold"), plot.margin = ) +
+    scale_y_continuous(breaks = seq(-3, 3, by = 1)) +
+    annotation_custom(img_grob_5, xmin = Inf, xmax = 10, ymin = Inf, ymax = 2) +
+    annotation_custom(img_grob_4, xmin = Inf, xmax = 4, ymin = Inf, ymax = 2) +
+    coord_cartesian(ylim = c(-3, 3), clip = "off") 
+})
+cluster_grids <- grid.arrange(monte_mike, mc_mm, layout_matrix = rbind(c(1, 2)))
+```
+
+<div style="margin-bottom: 35px;"></div>
+
+There are a whole bunch of possibilities for further exploration, so feel free to use my code as you see fit! Or if you have any suggestions for me to dive deeper into this analysis, send them my way. Thanks so much for reading my piece!
+
+## Sources
+
+| https://uc-r.github.io/kmeans_clustering
+| https://alexcstern.github.io/hoopDown.html
+| https://www.basketball-reference.com/
+| https://rpubs.com/ranydc/rmarkdown_themes
+
+<div style="margin-bottom: 25px;"></div>
+
+
+
